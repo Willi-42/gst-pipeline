@@ -2,14 +2,17 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/go-gst/go-glib/glib"
 	"github.com/go-gst/go-gst/gst"
+	"github.com/go-gst/go-gst/gst/app"
 )
 
-func tutorialPipe() (*gst.Pipeline, error) {
+func receiverPipe(transmCh chan []uint8) (*gst.Pipeline, error) {
 	gst.Init(nil)
 
 	// Create a pipeline
@@ -18,7 +21,47 @@ func tutorialPipe() (*gst.Pipeline, error) {
 		return nil, err
 	}
 
-	location := "/Users/fabianfromwald/private/91_copy_usb/F/Videos/Parachuteing_Video.mp4"
+	// Create the elements
+	elems, err := gst.NewElementMany("appsrc", "vp8dec", "autovideosink")
+	if err != nil {
+		return nil, err
+	}
+
+	// Add the elements to the pipeline and link them
+	pipeline.AddMany(elems...)
+	gst.ElementLinkMany(elems...)
+
+	// Get the app sourrce from the first element returned
+	src := app.SrcFromElement(elems[0])
+	src.SetCaps(gst.NewCapsFromString("video/x-vp8"))
+
+	src.SetCallbacks(&app.SourceCallbacks{
+		NeedDataFunc: func(self *app.Source, _ uint) {
+
+			newFrame := <-transmCh
+			size := int64(len(newFrame))
+
+			// Create a buffer that can hold exactly one video RGBA frame.
+			buffer := gst.NewBufferWithSize(size)
+
+			buffer.Map(gst.MapWrite).WriteData(newFrame)
+			defer buffer.Unmap()
+			src.PushBuffer(buffer)
+		},
+	})
+
+	return pipeline, nil
+}
+
+func senderPipe(file string, transmCh chan []uint8) (*gst.Pipeline, error) {
+	gst.Init(nil)
+
+	// Create a pipeline
+	pipeline, err := gst.NewPipeline("")
+	if err != nil {
+		return nil, err
+	}
+
 	src, err := gst.NewElement("filesrc")
 	if err != nil {
 		return nil, err
@@ -29,7 +72,7 @@ func tutorialPipe() (*gst.Pipeline, error) {
 		return nil, err
 	}
 
-	src.Set("location", location)
+	src.Set("location", file)
 
 	pipeline.AddMany(src, decodebin)
 	src.Link(decodebin)
@@ -61,46 +104,47 @@ func tutorialPipe() (*gst.Pipeline, error) {
 		}
 
 		if isAudio {
-			// decodebin found a raw audiostream, so we build the follow-up pipeline to
-			// play it on the default audio playback device (using autoaudiosink).
-			elements, err := gst.NewElementMany("queue", "audioconvert", "audioresample", "autoaudiosink")
-			if err != nil {
-				// We can create custom errors (with optional structures) and send them to the pipeline bus.
-				// The first argument reflects the source of the error, the second is the error itself, followed by a debug string.
-				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for audio pipeline", nil)
-				pipeline.GetPipelineBus().Post(msg)
-				return
-			}
-			pipeline.AddMany(elements...)
-			gst.ElementLinkMany(elements...)
-
-			// !!ATTENTION!!:
-			// This is quite important and people forget it often. Without making sure that
-			// the new elements have the same state as the pipeline, things will fail later.
-			// They would still be in Null state and can't process data.
-			for _, e := range elements {
-				e.SyncStateWithParent()
-			}
-
-			// The queue was the first element returned above
-			queue := elements[0]
-			// Get the queue element's sink pad and link the decodebin's newly created
-			// src pad for the audio stream to it.
-			sinkPad := queue.GetStaticPad("sink")
-			srcPad.Link(sinkPad)
+			fmt.Println("Audi skipped!")
 
 		} else if isVideo {
+			sink, err := app.NewAppSink()
+			if err != nil {
+				return
+			}
+
 			// decodebin found a raw videostream, so we build the follow-up pipeline to
 			// display it using the autovideosink.
-			elements, err := gst.NewElementMany("queue", "videoconvert", "videoscale", "autovideosink")
+			elements, err := gst.NewElementMany("queue", "videoconvert", "vp8enc")
 			if err != nil {
 				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 				pipeline.GetPipelineBus().Post(msg)
 				return
 			}
-			pipeline.AddMany(elements...)
-			gst.ElementLinkMany(elements...)
+			pipeline.AddMany(append(elements, sink.Element)...)
+			gst.ElementLinkMany(append(elements, sink.Element)...)
+			sink.SetCallbacks(&app.SinkCallbacks{
+				NewSampleFunc: func(sink *app.Sink) gst.FlowReturn {
 
+					// Pull the sample that triggered this callback
+					sample := sink.PullSample()
+					if sample == nil {
+						return gst.FlowEOS
+					}
+					buffer := sample.GetBuffer()
+					if buffer == nil {
+						return gst.FlowError
+					}
+					samples := buffer.Map(gst.MapRead).AsUint8Slice()
+					defer buffer.Unmap()
+
+					// send segment to receiver
+					transmCh <- samples // does this copy the array?
+
+					return gst.FlowOK
+				},
+			})
+
+			// rest is for syncing the elements
 			for _, e := range elements {
 				e.SyncStateWithParent()
 			}
@@ -110,6 +154,7 @@ func tutorialPipe() (*gst.Pipeline, error) {
 			// src pad for the video stream to it.
 			sinkPad := queue.GetStaticPad("sink")
 			srcPad.Link(sinkPad)
+
 		}
 	})
 
@@ -117,14 +162,30 @@ func tutorialPipe() (*gst.Pipeline, error) {
 }
 
 func main() {
-	pipe, err := tutorialPipe()
+	file := flag.String("file", "", "source file")
+	flag.Parse()
+
+	if *file == "" {
+		fmt.Println("No file given!")
+		os.Exit(0)
+	}
+
+	transmCh := make(chan []uint8, 100)
+
+	sendPipe, err := senderPipe(*file, transmCh)
+	if err != nil {
+		panic(err)
+	}
+
+	recvPipe, err := receiverPipe(transmCh)
 	if err != nil {
 		panic(err)
 	}
 
 	mainLoop := glib.NewMainLoop(glib.MainContextDefault(), false)
 
-	pipe.SetState(gst.StatePlaying)
+	sendPipe.SetState(gst.StatePlaying)
+	recvPipe.SetState(gst.StatePlaying)
 
 	mainLoop.Run()
 }
