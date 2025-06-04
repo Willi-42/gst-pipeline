@@ -170,6 +170,7 @@ func main() {
 		os.Exit(0)
 	}
 
+	// channel to connect sender and receiver pipeline
 	transmCh := make(chan []uint8, 100)
 
 	sendPipe, err := senderPipe(*file, transmCh)

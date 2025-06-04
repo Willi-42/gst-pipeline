@@ -1,10 +1,9 @@
 # gst-test
-
-Change location variable in code to a video file. Then:
+Simple gst-go example.
 
 ```shell
 go build
 ```
 ```shell
-./gst-test
+./gst-test -file <path_to_video_file>
 ```
