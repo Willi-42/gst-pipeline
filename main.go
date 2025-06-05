@@ -4,8 +4,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-gst/go-glib/glib"
 	"github.com/go-gst/go-gst/gst"
@@ -51,29 +53,54 @@ func receiverPipe(transmCh chan []uint8) (*gst.Pipeline, error) {
 	return pipeline, nil
 }
 
-func senderPipe(file string, transmCh chan []uint8) (*gst.Pipeline, error) {
+func createEncoder() *gst.Element {
+	settings := map[string]interface{}{"tune": 0x00000004} // tune: zero_latency
+
+	encoder, err := gst.NewElementWithProperties("x264enc", settings)
+	if err != nil {
+		log.Fatal("cannot create encoder: ", err)
+	}
+
+	err = encoder.Set("bitrate", uint(500)) // kbps
+	if err != nil {
+		log.Fatal("cannot set bitrate: ", err)
+	}
+
+	// sliced-threads for better performance
+	err = encoder.Set("sliced-threads", true)
+	if err != nil {
+		log.Fatal("cannot set bitrate: ", err)
+	}
+
+	return encoder
+}
+
+func senderPipe(file string, transmCh chan []uint8) (*gst.Pipeline, *gst.Element, error) {
 	gst.Init(nil)
 
 	// Create a pipeline
 	pipeline, err := gst.NewPipeline("")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	src, err := gst.NewElement("filesrc")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	decodebin, err := gst.NewElement("decodebin")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	src.Set("location", file)
 
 	pipeline.AddMany(src, decodebin)
 	src.Link(decodebin)
+
+	// create ecnoder here, so we can ref it
+	encoder := createEncoder()
 
 	decodebin.Connect("pad-added", func(self *gst.Element, srcPad *gst.Pad) {
 
@@ -112,17 +139,15 @@ func senderPipe(file string, transmCh chan []uint8) (*gst.Pipeline, error) {
 
 			// decodebin found a raw videostream, so we build the follow-up pipeline to
 			// display it using the autovideosink.
-			elements, err := gst.NewElementMany("queue", "videoconvert", "x264enc")
+			elements, err := gst.NewElementMany("queue", "videoconvert")
 			if err != nil {
 				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 				pipeline.GetPipelineBus().Post(msg)
 				return
 			}
-			encoder := elements[2]
-			encoder.Set("bitrate", 1000) // 1Mbps
 
-			pipeline.AddMany(append(elements, sink.Element)...)
-			gst.ElementLinkMany(append(elements, sink.Element)...)
+			pipeline.AddMany(append(elements, encoder, sink.Element)...)
+			gst.ElementLinkMany(append(elements, encoder, sink.Element)...)
 			sink.SetCallbacks(&app.SinkCallbacks{
 				NewSampleFunc: func(sink *app.Sink) gst.FlowReturn {
 
@@ -159,7 +184,7 @@ func senderPipe(file string, transmCh chan []uint8) (*gst.Pipeline, error) {
 		}
 	})
 
-	return pipeline, nil
+	return pipeline, encoder, nil
 }
 
 func main() {
@@ -174,7 +199,7 @@ func main() {
 	// channel to connect sender and receiver pipeline
 	transmCh := make(chan []uint8, 100)
 
-	sendPipe, err := senderPipe(*file, transmCh)
+	sendPipe, videoEncoder, err := senderPipe(*file, transmCh)
 	if err != nil {
 		panic(err)
 	}
@@ -188,6 +213,24 @@ func main() {
 
 	sendPipe.SetState(gst.StatePlaying)
 	recvPipe.SetState(gst.StatePlaying)
+
+	// periodic bitrate adaptation
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+			err = videoEncoder.Set("bitrate", uint(100)) // kbps
+			if err != nil {
+				log.Fatal("cannot set bitrate: ", err)
+			}
+			log.Println("bitrate low")
+			time.Sleep(10 * time.Second)
+			err = videoEncoder.Set("bitrate", uint(1000)) // kbps
+			if err != nil {
+				log.Fatal("cannot set bitrate: ", err)
+			}
+			log.Println("bitrate high")
+		}
+	}()
 
 	mainLoop.Run()
 }
