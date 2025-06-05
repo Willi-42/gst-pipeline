@@ -22,7 +22,7 @@ func receiverPipe(transmCh chan []uint8) (*gst.Pipeline, error) {
 	}
 
 	// Create the elements
-	elems, err := gst.NewElementMany("appsrc", "vp8dec", "autovideosink")
+	elems, err := gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "autovideosink")
 	if err != nil {
 		return nil, err
 	}
@@ -33,15 +33,13 @@ func receiverPipe(transmCh chan []uint8) (*gst.Pipeline, error) {
 
 	// Get the app sourrce from the first element returned
 	src := app.SrcFromElement(elems[0])
-	src.SetCaps(gst.NewCapsFromString("video/x-vp8"))
+	src.SetCaps(gst.NewCapsFromString("video/x-h264,stream-format=byte-stream"))
 
 	src.SetCallbacks(&app.SourceCallbacks{
 		NeedDataFunc: func(self *app.Source, _ uint) {
 
 			newFrame := <-transmCh
 			size := int64(len(newFrame))
-
-			// Create a buffer that can hold exactly one video RGBA frame.
 			buffer := gst.NewBufferWithSize(size)
 
 			buffer.Map(gst.MapWrite).WriteData(newFrame)
@@ -114,12 +112,15 @@ func senderPipe(file string, transmCh chan []uint8) (*gst.Pipeline, error) {
 
 			// decodebin found a raw videostream, so we build the follow-up pipeline to
 			// display it using the autovideosink.
-			elements, err := gst.NewElementMany("queue", "videoconvert", "vp8enc")
+			elements, err := gst.NewElementMany("queue", "videoconvert", "x264enc")
 			if err != nil {
 				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 				pipeline.GetPipelineBus().Post(msg)
 				return
 			}
+			encoder := elements[2]
+			encoder.Set("bitrate", 1000) // 1Mbps
+
 			pipeline.AddMany(append(elements, sink.Element)...)
 			gst.ElementLinkMany(append(elements, sink.Element)...)
 			sink.SetCallbacks(&app.SinkCallbacks{
