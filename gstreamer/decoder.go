@@ -12,7 +12,7 @@ type Decoder struct {
 	pipeline *gst.Pipeline
 }
 
-func NewDecoder(pullframe PullFrameFunction) (*Decoder, error) {
+func NewDecoder(pullframe PullFrameFunction, withRTP bool) (*Decoder, error) {
 	gst.Init(nil)
 
 	// Create a pipeline
@@ -22,9 +22,18 @@ func NewDecoder(pullframe PullFrameFunction) (*Decoder, error) {
 	}
 
 	// Create the elements
-	elems, err := gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "autovideosink")
-	if err != nil {
-		return nil, err
+	var elems []*gst.Element
+	if withRTP {
+		elems, err = gst.NewElementMany("appsrc", "rtpjitterbuffer", "h264parse", "rtph264depay", "avdec_h264", "autovideosink")
+		if err != nil {
+			return nil, err
+		}
+
+	} else {
+		elems, err = gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "autovideosink")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Add the elements to the pipeline and link them
@@ -33,7 +42,12 @@ func NewDecoder(pullframe PullFrameFunction) (*Decoder, error) {
 
 	// Get the app sourrce from the first element returned
 	src := app.SrcFromElement(elems[0])
-	src.SetCaps(gst.NewCapsFromString("video/x-h264,stream-format=byte-stream"))
+
+	if withRTP {
+		src.SetCaps(gst.NewCapsFromString("application/x-rtp, clock-rate=90000"))
+	} else {
+		src.SetCaps(gst.NewCapsFromString("video/x-h264,stream-format=byte-stream"))
+	}
 
 	src.SetCallbacks(&app.SourceCallbacks{
 		NeedDataFunc: func(self *app.Source, _ uint) {

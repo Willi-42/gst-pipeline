@@ -40,7 +40,7 @@ func createGstEncoderElm() *gst.Element {
 	return encoder
 }
 
-func NewEncoder(filename string, callback EncoderCallback) (*Encoder, error) {
+func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encoder, error) {
 	gst.Init(nil)
 
 	// Create a pipeline
@@ -104,15 +104,29 @@ func NewEncoder(filename string, callback EncoderCallback) (*Encoder, error) {
 
 			// decodebin found a raw videostream, so we build the follow-up pipeline to
 			// display it using the autovideosink.
-			elements, err := gst.NewElementMany("queue", "videoconvert")
+			elements, err := gst.NewElementMany("clocksync", "queue", "videoconvert")
 			if err != nil {
 				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 				pipeline.GetPipelineBus().Post(msg)
 				return
 			}
 
-			pipeline.AddMany(append(elements, gstEncoder, sink.Element)...)
-			gst.ElementLinkMany(append(elements, gstEncoder, sink.Element)...)
+			var allElements []*gst.Element
+			if withRTP {
+				// RTP encapsuling
+				rtpEncapuler, err := gst.NewElement("rtph264pay")
+				if err != nil {
+					msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
+					pipeline.GetPipelineBus().Post(msg)
+				}
+				allElements = append(elements, gstEncoder, rtpEncapuler, sink.Element)
+			} else {
+				// no encapsuling
+				allElements = append(elements, gstEncoder, sink.Element)
+			}
+
+			pipeline.AddMany(allElements...)
+			gst.ElementLinkMany(allElements...)
 			sink.SetCallbacks(&app.SinkCallbacks{
 				NewSampleFunc: func(sink *app.Sink) gst.FlowReturn {
 
