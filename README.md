@@ -1,5 +1,8 @@
 # gst-test
-Simple gst-go example.
+Simple gst-go example. Folder b`gstreamer` contains a usable go-module.
+
+
+## Run example
 
 ```shell
 go build
