@@ -1,5 +1,5 @@
-# gst-test
-Simple gst-go example. Folder `gstreamer` contains a usable go-module.
+# gst-pipeline
+Simple gst-pipeline for streaming from a source file. Folder `gstreamer` contains a usable go-module.
 
 
 ## Run example

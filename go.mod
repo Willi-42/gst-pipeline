@@ -1,4 +1,4 @@
-module github.com/willi-42/gst-test
+module github.com/willi-42/gst-pipeline
 
 go 1.24.3
 

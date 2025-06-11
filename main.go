@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/go-gst/go-glib/glib"
-	"github.com/willi-42/gst-test/gstreamer"
+	"github.com/willi-42/gst-pipeline/gstreamer"
 )
 
 func senderPipe(file string, transmCh chan []uint8, withRTP bool) (*gstreamer.Encoder, error) {
