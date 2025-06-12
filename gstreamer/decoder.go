@@ -24,13 +24,13 @@ func NewDecoder(pullframe PullFrameFunction, withRTP bool) (*Decoder, error) {
 	// Create the elements
 	var elems []*gst.Element
 	if withRTP {
-		elems, err = gst.NewElementMany("appsrc", "rtpjitterbuffer", "h264parse", "rtph264depay", "avdec_h264", "autovideosink")
+		elems, err = gst.NewElementMany("appsrc", "rtpjitterbuffer", "rtph264depay", "avdec_h264", "videoconvert", "autovideosink")
 		if err != nil {
 			return nil, err
 		}
 
 	} else {
-		elems, err = gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "autovideosink")
+		elems, err = gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "videoconvert", "autovideosink")
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func NewDecoder(pullframe PullFrameFunction, withRTP bool) (*Decoder, error) {
 	src := app.SrcFromElement(elems[0])
 
 	if withRTP {
-		src.SetCaps(gst.NewCapsFromString("application/x-rtp, clock-rate=90000"))
+		src.SetCaps(gst.NewCapsFromString("application/x-rtp, clock-rate=90000,media=video, encoding-name=H264"))
 	} else {
 		src.SetCaps(gst.NewCapsFromString("video/x-h264,stream-format=byte-stream"))
 	}

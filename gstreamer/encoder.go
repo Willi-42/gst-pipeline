@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/go-gst/go-glib/glib"
@@ -41,6 +42,11 @@ func createGstEncoderElm() *gst.Element {
 }
 
 func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encoder, error) {
+	// check if given file exists
+	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
 	gst.Init(nil)
 
 	// Create a pipeline
@@ -54,6 +60,7 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 		return nil, err
 	}
 
+	// We need the decodebin to know what file we received
 	decodebin, err := gst.NewElement("decodebin")
 	if err != nil {
 		return nil, err
@@ -67,6 +74,7 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 	// create ecnoder here, so we can ref it
 	gstEncoder := createGstEncoderElm()
 
+	// wait for decodebin to receive the first pad and then create rest of pipeline
 	decodebin.Connect("pad-added", func(self *gst.Element, srcPad *gst.Pad) {
 
 		// Try to detect whether this is video or audio
@@ -104,7 +112,7 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 
 			// decodebin found a raw videostream, so we build the follow-up pipeline to
 			// display it using the autovideosink.
-			elements, err := gst.NewElementMany("clocksync", "queue", "videoconvert")
+			elements, err := gst.NewElementMany("queue", "clocksync")
 			if err != nil {
 				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 				pipeline.GetPipelineBus().Post(msg)

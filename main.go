@@ -71,14 +71,14 @@ func main() {
 	// periodic bitrate adaptation
 	go func() {
 		for {
-			time.Sleep(10 * time.Second)
-			err = encoder.SetBitrate(100) // kbps
+			time.Sleep(15 * time.Second)
+			err = encoder.SetBitrate(500) // kbps
 			if err != nil {
 				log.Fatal("cannot set bitrate: ", err)
 			}
 			log.Println("bitrate low")
 			time.Sleep(10 * time.Second)
-			err = encoder.SetBitrate(1000) // kbps
+			err = encoder.SetBitrate(2000) // kbps
 			if err != nil {
 				log.Fatal("cannot set bitrate: ", err)
 			}
