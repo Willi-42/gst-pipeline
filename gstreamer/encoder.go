@@ -112,7 +112,7 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 
 			// decodebin found a raw videostream, so we build the follow-up pipeline to
 			// display it using the autovideosink.
-			elements, err := gst.NewElementMany("queue", "clocksync")
+			elements, err := gst.NewElementMany("clocksync", "queue")
 			if err != nil {
 				msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 				pipeline.GetPipelineBus().Post(msg)
@@ -121,8 +121,8 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 
 			var allElements []*gst.Element
 			if withRTP {
-				// RTP encapsuling
-				rtpEncapuler, err := gst.NewElement("rtph264pay")
+				// RTP encapsuling with no aggregation
+				rtpEncapuler, err := gst.NewElementWithProperties("rtph264pay", map[string]interface{}{"aggregate-mode": 0, "mtu": 1390})
 				if err != nil {
 					msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 					pipeline.GetPipelineBus().Post(msg)
@@ -162,10 +162,10 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 				e.SyncStateWithParent()
 			}
 
-			queue := elements[0]
+			elmAfterDecodebin := elements[0]
 			// Get the queue element's sink pad and link the decodebin's newly created
 			// src pad for the video stream to it.
-			sinkPad := queue.GetStaticPad("sink")
+			sinkPad := elmAfterDecodebin.GetStaticPad("sink")
 			srcPad.Link(sinkPad)
 
 		}
