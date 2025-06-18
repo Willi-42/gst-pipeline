@@ -12,7 +12,10 @@ import (
 	"github.com/go-gst/go-gst/gst/app"
 )
 
-type EncoderCallback func([]uint8)
+const MAX_MTU = 1390
+const START_ECNODER_RATE = uint(2000) // kbps
+
+type EncoderCallback func(encodedFrame []uint8)
 
 type Encoder struct {
 	pipeline       *gst.Pipeline
@@ -27,7 +30,7 @@ func createGstEncoderElm() *gst.Element {
 		log.Fatal("cannot create encoder: ", err)
 	}
 
-	err = encoder.Set("bitrate", uint(2000)) // kbps
+	err = encoder.Set("bitrate", START_ECNODER_RATE)
 	if err != nil {
 		log.Fatal("cannot set bitrate: ", err)
 	}
@@ -122,7 +125,7 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 			var allElements []*gst.Element
 			if withRTP {
 				// RTP encapsuling with no aggregation
-				rtpEncapuler, err := gst.NewElementWithProperties("rtph264pay", map[string]interface{}{"aggregate-mode": 0, "mtu": 1390})
+				rtpEncapuler, err := gst.NewElementWithProperties("rtph264pay", map[string]interface{}{"aggregate-mode": 0, "mtu": MAX_MTU})
 				if err != nil {
 					msg := gst.NewErrorMessage(self, gst.NewGError(2, err), "Could not create elements for video pipeline", nil)
 					pipeline.GetPipelineBus().Post(msg)
@@ -174,6 +177,7 @@ func NewEncoder(filename string, callback EncoderCallback, withRTP bool) (*Encod
 	return &Encoder{pipeline: pipeline, encoderElement: gstEncoder}, nil
 }
 
+// Run starts the gstreamer encoder pipeline in the same process
 func (e *Encoder) Run() error {
 	err := e.pipeline.SetState(gst.StatePlaying)
 	if err != nil {

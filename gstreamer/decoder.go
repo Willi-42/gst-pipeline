@@ -6,7 +6,7 @@ import (
 	"github.com/go-gst/go-gst/gst/app"
 )
 
-type PullFrameFunction func() []uint8
+type PullFrameFunction func() (encodedFrame []uint8)
 
 type Decoder struct {
 	pipeline *gst.Pipeline
@@ -67,6 +67,7 @@ func NewDecoder(pullframe PullFrameFunction, withRTP bool) (*Decoder, error) {
 	return &Decoder{pipeline: pipeline}, nil
 }
 
+// Run starts the gstreamer decoder pipeline in the same process
 func (d *Decoder) Run() error {
 	err := d.pipeline.SetState(gst.StatePlaying)
 	if err != nil {
