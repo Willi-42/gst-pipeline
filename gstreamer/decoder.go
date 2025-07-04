@@ -12,7 +12,7 @@ type Decoder struct {
 	pipeline *gst.Pipeline
 }
 
-func NewDecoder(pullframe PullFrameFunction, withRTP bool) (*Decoder, error) {
+func NewDecoder(pullframe PullFrameFunction, withRTP, hideVideo bool) (*Decoder, error) {
 	gst.Init(nil)
 
 	// Create a pipeline
@@ -21,16 +21,21 @@ func NewDecoder(pullframe PullFrameFunction, withRTP bool) (*Decoder, error) {
 		return nil, err
 	}
 
+	sinkName := "autovideosink"
+	if hideVideo {
+		sinkName = "fakesink"
+	}
+
 	// Create the elements
 	var elems []*gst.Element
 	if withRTP {
-		elems, err = gst.NewElementMany("appsrc", "rtpjitterbuffer", "rtph264depay", "avdec_h264", "videoconvert", "autovideosink")
+		elems, err = gst.NewElementMany("appsrc", "rtpjitterbuffer", "rtph264depay", "avdec_h264", "videoconvert", sinkName)
 		if err != nil {
 			return nil, err
 		}
 
 	} else {
-		elems, err = gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "videoconvert", "autovideosink")
+		elems, err = gst.NewElementMany("appsrc", "h264parse", "avdec_h264", "videoconvert", sinkName)
 		if err != nil {
 			return nil, err
 		}

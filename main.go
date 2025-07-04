@@ -31,7 +31,7 @@ func receiverPipe(transmCh chan []uint8, withRTP bool) (*gstreamer.Decoder, erro
 		return newFrame
 	}
 
-	decoder, err := gstreamer.NewDecoder(pullFrameFunction, withRTP)
+	decoder, err := gstreamer.NewDecoder(pullFrameFunction, withRTP, false)
 	if err != nil {
 		return nil, err
 	}
