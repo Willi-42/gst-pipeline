@@ -5,10 +5,7 @@ Videos are encoded with h264.
 
 ## Run example
 
+To run the example, execute the following. Use `-rtp` to run the RTP pipeline. 
 ```shell
-go build
-```
-Run the test app, execute the following. Use `-rtp` to run the RTP pipeline. 
-```shell
-./gst-test -file <path_to_video_file>
+go run main.go -file <path_to_video_file>
 ```
